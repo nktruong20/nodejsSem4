@@ -123,32 +123,68 @@ app.get("/products/:id", (req, res) => {
 // Route tạo giỏ hàng (người dùng)
 app.post("/cart", verifyToken, (req, res) => {
   const { product_id, quantity } = req.body;
-
-  const sql = "INSERT INTO carts (user_id, created_at) VALUES (?, NOW())";
-  db.query(sql, [req.userId], (err, result) => {
+  const findUser = "SELECT * FROM carts WHERE user_id = ?";
+  db.query(findUser, [req.userId], (err, result) => {
     if (err) return res.status(500).send(err);
-    const cartId = result.insertId;
-
-    const sqlCartItem =
-      "INSERT INTO cart_items (cart_id, product_id, quantity) VALUES (?, ?, ?)";
-    db.query(sqlCartItem, [cartId, product_id, quantity], (err) => {
-      if (err) return res.status(500).send(err);
-      res.status(201).send({ message: "Product added to cart" });
-    });
+    if (result.length == 0) {
+      const sql = "INSERT INTO carts (user_id, created_at) VALUES (?, NOW())";
+      db.query(sql, [req.userId], (err, result) => {
+        if (err) return res.status(500).send(err);
+        const cartId = result.insertId;
+        const sqlCartItem =
+          "INSERT INTO cart_items (cart_id, product_id, quantity) VALUES (?, ?, ?)";
+        db.query(sqlCartItem, [cartId, product_id, quantity], (err) => {
+          if (err) return res.status(500).send(err);
+          res.status(201).send({ message: "Product added to cart" });
+        });
+      });
+    } else {
+      const cartId = result[0].id;
+      const findCartItem = "SELECT * FROM cart_items WHERE cart_id = ?";
+      db.query(findCartItem, [cartId], (err, result) => {
+        if (err) return res.status(500).send(err);
+        if (result.length == 0) {
+          const sqlCartItem =
+            "INSERT INTO cart_items (cart_id, product_id, quantity) VALUES (?, ?, ?)";
+          db.query(sqlCartItem, [cartId, product_id, quantity], (err) => {
+            if (err) return res.status(500).send(err);
+            res.status(201).send({ message: "Product added to cart" });
+          });
+        } else if (result.length > 0) {
+          let haveProduct = false;
+          result.forEach((item) => {
+            if (item.product_id == product_id) {
+              haveProduct = true;
+              const sqlCartItem =
+                "UPDATE cart_items SET quantity = quantity + ? WHERE cart_id = ? AND product_id = ?";
+              db.query(sqlCartItem, [quantity, cartId, product_id], (err) => {
+                if (err) return res.status(500).send(err);
+                res.status(201).send({ message: "Product added to cart" });
+              });
+            }
+            if (!haveProduct) {
+              const sqlCartItem =
+                "INSERT INTO cart_items (cart_id, product_id, quantity) VALUES (?, ?, ?)";
+              db.query(sqlCartItem, [cartId, product_id, quantity], (err) => {
+                if (err) return res.status(500).send(err);
+                res.status(201).send({ message: "Product added to cart" });
+              });
+            }
+          });
+        }
+      });
+    }
   });
 });
 
 // Route lấy danh sách sản phẩm trong giỏ hàng
 app.post("/getCart", verifyToken, (req, res) => {
-  console.log(req.body.userId);
-
   const sql = `
-    SELECT ci.id, ci.product_id, p.name, p.image_url, p.price, SUM(ci.quantity) AS quantity
+    SELECT ci.id, ci.product_id, p.name, p.image_url, p.price, ci.quantity
     FROM cart_items ci
     JOIN carts c ON ci.cart_id = c.id
     JOIN products p ON ci.product_id = p.id
     WHERE c.user_id = ?
-    GROUP BY ci.product_id, p.name, p.price;
   `;
   db.query(sql, [req.body.userId], (err, result) => {
     if (err) return res.status(500).send(err);
@@ -158,13 +194,10 @@ app.post("/getCart", verifyToken, (req, res) => {
 
 // Route xóa sản phẩm khỏi giỏ hàng
 app.delete("/cart/:id", verifyToken, (req, res) => {
-  const sql =
-    "DELETE FROM cart_items WHERE id = ? AND cart_id IN (SELECT id FROM carts WHERE user_id = ?)";
-  db.query(sql, [req.params.id, req.userId], (err, result) => {
+  const sql = "DELETE FROM cart_items WHERE id = ?";
+  db.query(sql, [req.params.id], (err) => {
     if (err) return res.status(500).send(err);
-    if (result.affectedRows === 0)
-      return res.status(404).send({ message: "Cart item not found" });
-    res.status(200).send({ message: "Cart item deleted successfully" });
+    res.status(200).send({ message: "Product deleted from cart" });
   });
 });
 
