@@ -141,18 +141,18 @@ app.post("/cart", verifyToken, (req, res) => {
     } else {
       const cartId = result[0].id;
       const findCartItem = "SELECT * FROM cart_items WHERE cart_id = ?";
-      db.query(findCartItem, [cartId], (err, result) => {
+      db.query(findCartItem, [cartId], (err, resultCartItem) => {
         if (err) return res.status(500).send(err);
-        if (result.length == 0) {
+        if (resultCartItem.length == 0) {
           const sqlCartItem =
             "INSERT INTO cart_items (cart_id, product_id, quantity) VALUES (?, ?, ?)";
           db.query(sqlCartItem, [cartId, product_id, quantity], (err) => {
             if (err) return res.status(500).send(err);
             res.status(201).send({ message: "Product added to cart" });
           });
-        } else if (result.length > 0) {
+        } else if (resultCartItem.length > 0) {
           let haveProduct = false;
-          result.forEach((item) => {
+          resultCartItem.forEach((item) => {
             if (item.product_id == product_id) {
               haveProduct = true;
               const sqlCartItem =
@@ -162,15 +162,15 @@ app.post("/cart", verifyToken, (req, res) => {
                 res.status(201).send({ message: "Product added to cart" });
               });
             }
-            if (!haveProduct) {
-              const sqlCartItem =
-                "INSERT INTO cart_items (cart_id, product_id, quantity) VALUES (?, ?, ?)";
-              db.query(sqlCartItem, [cartId, product_id, quantity], (err) => {
-                if (err) return res.status(500).send(err);
-                res.status(201).send({ message: "Product added to cart" });
-              });
-            }
           });
+          if (!haveProduct) {
+            const sqlCartItem =
+              "INSERT INTO cart_items (cart_id, product_id, quantity) VALUES (?, ?, ?)";
+            db.query(sqlCartItem, [cartId, product_id, quantity], (err) => {
+              if (err) return res.status(500).send(err);
+              res.status(201).send({ message: "Product added to cart" });
+            });
+          }
         }
       });
     }
@@ -203,28 +203,63 @@ app.delete("/cart/:id", verifyToken, (req, res) => {
 
 // Route đặt hàng (người dùng)
 app.post("/orders", verifyToken, (req, res) => {
-  const { cart_items, total_price } = req.body;
-
+  const { cart_items, total_price, address, phone, status } = req.body;
+  const cartItemsId = JSON.parse(cart_items);
   const sqlOrder =
-    "INSERT INTO orders (user_id, total_price, status) VALUES (?, ?, 'pending')";
-  db.query(sqlOrder, [req.userId, total_price], (err, result) => {
-    if (err) return res.status(500).send(err);
-    const orderId = result.insertId;
+    "INSERT INTO orders (user_id, total_price, status, address, phone) VALUES (?, ?, ?, ?, ?)";
+  db.query(
+    sqlOrder,
+    [req.userId, total_price, status, address, phone],
+    (err, result) => {
+      if (err) return res.status(500).send(err);
+      const orderId = result.insertId;
+      const queryCartItems = `
+            SELECT 
+              ci.id, 
+              ci.cart_id, 
+              ci.product_id, 
+              ci.quantity, 
+              p.price AS product_price, 
+              (p.price * ci.quantity) AS price 
+            FROM 
+              cart_items ci
+            JOIN 
+              products p 
+            ON 
+              ci.product_id = p.id
+            WHERE 
+              ci.id IN (?);
+          `;
+      db.query(queryCartItems, [cartItemsId], (err, resultCartItems) => {
+        if (err) return res.status(500).send(err);
 
-    cart_items.forEach((item) => {
-      const sqlOrderItem =
-        "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)";
-      db.query(
-        sqlOrderItem,
-        [orderId, item.product_id, item.quantity, item.price],
-        (err) => {
+        const deleteCartItems = "DELETE FROM cart_items WHERE id IN (?)";
+        db.query(deleteCartItems, [cartItemsId], (err) => {
           if (err) return res.status(500).send(err);
-        }
-      );
-    });
+        });
 
-    res.status(201).send({ message: "Order placed", orderId });
-  });
+        const insertOrderItemsSQL =
+          "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES ";
+        let values = [];
+        let placeholders = [];
+
+        // Duyệt qua danh sách items và chuẩn bị các placeholders (?, ?, ?, ?) cho mỗi item
+        resultCartItems.forEach((item) => {
+          placeholders.push("(?, ?, ?, ?)");
+          values.push(orderId, item.product_id, item.quantity, item.price);
+        });
+
+        // Kết hợp câu lệnh SQL với các placeholders
+        const finalSQL = insertOrderItemsSQL + placeholders.join(", ");
+
+        // Thực thi truy vấn SQL với tất cả giá trị của các item
+        db.query(finalSQL, values, (err) => {
+          if (err) return res.status(500).send(err);
+          res.status(200).send("Order items inserted successfully");
+        });
+      });
+    }
+  );
 });
 
 // Route xem danh sách đơn hàng (người dùng)
