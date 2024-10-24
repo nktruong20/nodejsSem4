@@ -384,6 +384,7 @@ app.delete("/categories/:id", verifyToken, (req, res) => {
   });
 });
 
+
 // Route lấy danh mục theo ID
 app.get("/categories/:id", (req, res) => {
   const id = req.params.id;
@@ -408,6 +409,28 @@ app.delete("/products/:id", verifyToken, (req, res) => {
     if (result.affectedRows === 0)
       return res.status(404).send({ message: "Product not found" });
     res.status(200).send({ message: "Product deleted successfully" });
+  });
+});
+app.put("/products/:id", verifyToken, (req, res) => {
+  if (req.userRole !== "admin") {
+    return res.status(403).send({ message: "Access denied" });
+  }
+
+  const { name, description, price, image_url } = req.body; // Các trường cần thiết để cập nhật
+  const id = req.params.id;
+
+  // Kiểm tra xem các trường cần thiết có tồn tại không
+  if (!name || !description || !price || !image_url) {
+    return res.status(400).send({ message: "All fields are required" });
+  }
+
+  const sql = "UPDATE products SET name = ?, description = ?, price = ?, image_url = ? WHERE id = ?";
+  db.query(sql, [name, description, price, image_url, id], (err, result) => {
+    if (err) return res.status(500).send(err);
+    if (result.affectedRows === 0) {
+      return res.status(404).send({ message: "Product not found" });
+    }
+    res.status(200).send({ message: "Product updated" });
   });
 });
 
