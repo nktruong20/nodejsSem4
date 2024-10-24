@@ -207,11 +207,20 @@ app.post("/orders", verifyToken, (req, res) => {
   const cartItemsId = JSON.parse(cart_items);
   const sqlOrder =
     "INSERT INTO orders (user_id, total_price, status, address, phone) VALUES (?, ?, ?, ?, ?)";
+
+  // Log query for order insertion
+  console.log("SQL for inserting order:", sqlOrder);
+
   db.query(
     sqlOrder,
     [req.userId, total_price, status, address, phone],
     (err, result) => {
-      if (err) return res.status(500).send(err);
+      if (err) {
+        console.log("Error inserting order:", err);
+        return res.status(500).send(err);
+      }
+      console.log("Order inserted with ID:", result.insertId);
+
       const orderId = result.insertId;
       const queryCartItems = `
             SELECT 
@@ -230,12 +239,28 @@ app.post("/orders", verifyToken, (req, res) => {
             WHERE 
               ci.id IN (?);
           `;
+
+      // Log query for selecting cart items
+      console.log("SQL for selecting cart items:", queryCartItems);
+
       db.query(queryCartItems, [cartItemsId], (err, resultCartItems) => {
-        if (err) return res.status(500).send(err);
+        if (err) {
+          console.log("Error selecting cart items:", err);
+          return res.status(500).send(err);
+        }
+        console.log("Cart items selected:", resultCartItems);
 
         const deleteCartItems = "DELETE FROM cart_items WHERE id IN (?)";
+        
+        // Log query for deleting cart items
+        console.log("SQL for deleting cart items:", deleteCartItems);
+
         db.query(deleteCartItems, [cartItemsId], (err) => {
-          if (err) return res.status(500).send(err);
+          if (err) {
+            console.log("Error deleting cart items:", err);
+            return res.status(500).send(err);
+          }
+          console.log("Cart items deleted successfully");
         });
 
         const insertOrderItemsSQL =
@@ -252,9 +277,17 @@ app.post("/orders", verifyToken, (req, res) => {
         // Kết hợp câu lệnh SQL với các placeholders
         const finalSQL = insertOrderItemsSQL + placeholders.join(", ");
 
+        // Log query for inserting order items
+        console.log("SQL for inserting order items:", finalSQL);
+        console.log("Values for order items:", values);
+
         // Thực thi truy vấn SQL với tất cả giá trị của các item
         db.query(finalSQL, values, (err) => {
-          if (err) return res.status(500).send(err);
+          if (err) {
+            console.log("Error inserting order items:", err);
+            return res.status(500).send(err);
+          }
+          console.log("Order items inserted successfully");
           res.status(200).send("Order items inserted successfully");
         });
       });
@@ -268,6 +301,30 @@ app.get("/orders", verifyToken, (req, res) => {
   db.query(sql, [req.userId], (err, result) => {
     if (err) return res.status(500).send(err);
     res.status(200).send(result);
+  });
+});
+
+
+app.get('/admin/orders', (req, res) => {
+  const query = `
+    SELECT 
+      o.id AS order_id,
+      o.total_price,
+      o.status,
+      o.address,
+      o.phone,
+      u.username
+    FROM 
+      orders o
+    JOIN 
+      users u ON o.user_id = u.id
+  `;
+
+  db.query(query, (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: 'Đã xảy ra lỗi khi lấy đơn hàng.' });
+    }
+    res.status(200).json(results);
   });
 });
 
