@@ -203,23 +203,19 @@ app.delete("/cart/:id", verifyToken, (req, res) => {
 
 // Route đặt hàng (người dùng)
 app.post("/orders", verifyToken, (req, res) => {
-  const { cart_items, total_price, address, phone, status } = req.body;
+  const { cart_items, total_price, address, phone, status, username } =
+    req.body;
   const cartItemsId = JSON.parse(cart_items);
   const sqlOrder =
-    "INSERT INTO orders (user_id, total_price, status, address, phone) VALUES (?, ?, ?, ?, ?)";
-
-  // Log query for order insertion
-  console.log("SQL for inserting order:", sqlOrder);
-
+    "INSERT INTO orders (user_id, total_price, status, address, phone, username) VALUES (?, ?, ?, ?, ?, ?)";
   db.query(
     sqlOrder,
-    [req.userId, total_price, status, address, phone],
+    [req.userId, total_price, status, address, phone, username],
     (err, result) => {
       if (err) {
         console.log("Error inserting order:", err);
         return res.status(500).send(err);
       }
-      console.log("Order inserted with ID:", result.insertId);
 
       const orderId = result.insertId;
       const queryCartItems = `
@@ -240,27 +236,19 @@ app.post("/orders", verifyToken, (req, res) => {
               ci.id IN (?);
           `;
 
-      // Log query for selecting cart items
-      console.log("SQL for selecting cart items:", queryCartItems);
-
       db.query(queryCartItems, [cartItemsId], (err, resultCartItems) => {
         if (err) {
           console.log("Error selecting cart items:", err);
           return res.status(500).send(err);
         }
-        console.log("Cart items selected:", resultCartItems);
 
         const deleteCartItems = "DELETE FROM cart_items WHERE id IN (?)";
-        
-        // Log query for deleting cart items
-        console.log("SQL for deleting cart items:", deleteCartItems);
 
         db.query(deleteCartItems, [cartItemsId], (err) => {
           if (err) {
             console.log("Error deleting cart items:", err);
             return res.status(500).send(err);
           }
-          console.log("Cart items deleted successfully");
         });
 
         const insertOrderItemsSQL =
@@ -276,11 +264,6 @@ app.post("/orders", verifyToken, (req, res) => {
 
         // Kết hợp câu lệnh SQL với các placeholders
         const finalSQL = insertOrderItemsSQL + placeholders.join(", ");
-
-        // Log query for inserting order items
-        console.log("SQL for inserting order items:", finalSQL);
-        console.log("Values for order items:", values);
-
         // Thực thi truy vấn SQL với tất cả giá trị của các item
         db.query(finalSQL, values, (err) => {
           if (err) {
@@ -296,16 +279,16 @@ app.post("/orders", verifyToken, (req, res) => {
 });
 
 // Route xem danh sách đơn hàng (người dùng)
-app.get("/orders", verifyToken, (req, res) => {
+app.get("/orders/:userId", verifyToken, (req, res) => {
   const sql = "SELECT * FROM orders WHERE user_id = ?";
-  db.query(sql, [req.userId], (err, result) => {
+
+  db.query(sql, [req.params.userId], (err, result) => {
     if (err) return res.status(500).send(err);
     res.status(200).send(result);
   });
 });
 
-
-app.get('/admin/orders', (req, res) => {
+app.get("/admin/orders", (req, res) => {
   const query = `
     SELECT 
       o.id AS order_id,
@@ -322,9 +305,20 @@ app.get('/admin/orders', (req, res) => {
 
   db.query(query, (err, results) => {
     if (err) {
-      return res.status(500).json({ error: 'Đã xảy ra lỗi khi lấy đơn hàng.' });
+      return res.status(500).json({ error: "Đã xảy ra lỗi khi lấy đơn hàng." });
     }
     res.status(200).json(results);
+  });
+});
+
+// Route xem danh sách đơn hàng (người dùng)
+app.get("/order_items/:orderId", verifyToken, (req, res) => {
+  const sql =
+    "SELECT oi.id, p.name as productName, p.image_url as productImage, p.id as productId, oi.quantity, oi.price FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE order_id = ?";
+
+  db.query(sql, [req.params.orderId], (err, result) => {
+    if (err) return res.status(500).send(err);
+    res.status(200).send(result);
   });
 });
 
