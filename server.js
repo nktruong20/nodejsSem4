@@ -109,6 +109,14 @@ app.get("/products", (req, res) => {
   });
 });
 
+app.get("/products/category/:categoryId", (req, res) => {
+  const sql = "SELECT * FROM products where category_id = ?";
+  db.query(sql, [req.params.categoryId], (err, result) => {
+    if (err) return res.status(500).send(err);
+    res.status(200).send(result);
+  });
+});
+
 // Route lấy chi tiết sản phẩm
 app.get("/products/:id", (req, res) => {
   const sql = "SELECT * FROM products WHERE id = ?";
@@ -378,7 +386,6 @@ app.delete("/categories/:id", verifyToken, (req, res) => {
   });
 });
 
-
 // Route lấy danh mục theo ID
 app.get("/categories/:id", (req, res) => {
   const id = req.params.id;
@@ -418,7 +425,8 @@ app.put("/products/:id", verifyToken, (req, res) => {
     return res.status(400).send({ message: "All fields are required" });
   }
 
-  const sql = "UPDATE products SET name = ?, description = ?, price = ?, image_url = ? WHERE id = ?";
+  const sql =
+    "UPDATE products SET name = ?, description = ?, price = ?, image_url = ? WHERE id = ?";
   db.query(sql, [name, description, price, image_url, id], (err, result) => {
     if (err) return res.status(500).send(err);
     if (result.affectedRows === 0) {
